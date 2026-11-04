@@ -204,6 +204,7 @@ document.querySelectorAll('.tab').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === b));
   currentTab = b.dataset.tab;
   document.querySelectorAll('main > section').forEach((s) => s.classList.toggle('hidden', s.id !== 'tab-' + currentTab));
+  history.replaceState(null, '', '#' + currentTab);
   refresh();
 });
 
@@ -397,6 +398,9 @@ async function refreshNow() {
     if (currentTab === 'rejected') await refreshRejected();
   } catch (e) { console.error(e); }
 }
+// Open the tab named in the URL, e.g. /#flink
+const linkedTab = document.querySelector(`.tab[data-tab="${location.hash.slice(1)}"]`);
+if (linkedTab) linkedTab.click();
 refreshFlinkStatus().then(refresh);
 refresh();
 setInterval(refresh, 2000);

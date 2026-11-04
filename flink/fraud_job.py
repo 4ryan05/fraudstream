@@ -206,6 +206,8 @@ def main():
     uri = lambda sub: (data / sub).as_uri()
 
     config = Configuration()
+    # Python operators hand records to the JVM in bundles; flush every 100 ms instead of every second.
+    config.set_string("python.fn-execution.bundle.time", "100")
     if args.local_rest_port:
         config.set_string("rest.port", str(args.local_rest_port))
     env = StreamExecutionEnvironment.get_execution_environment(config)
@@ -220,7 +222,9 @@ def main():
     )
     lines = env.from_source(source, WatermarkStrategy.no_watermarks(), "UPI transaction files").set_parallelism(1)
 
-    valid = lines.process(Validate(), output_type=Types.STRING()).name("Validate")
+    # Same parallelism as the source, so records are not rebalanced and each user's payments
+    # reach the fraud detector in the order they were written.
+    valid = lines.process(Validate(), output_type=Types.STRING()).name("Validate").set_parallelism(1)
     valid.get_side_output(INVALID_TAG).sink_to(file_sink(uri("output/invalid"), "invalid")).name("Invalid sink")
 
     scored = (
@@ -230,10 +234,12 @@ def main():
     )
     scored.sink_to(file_sink(uri("output/scored"), "scored")).name("Scored sink")
 
+    # with_idleness must come before with_timestamp_assigner: in PyFlink 1.20 calling it afterwards
+    # silently drops the Python timestamp assigner and the window sees records with no timestamp.
     watermarks = (
         WatermarkStrategy.for_bounded_out_of_orderness(Duration.of_seconds(5))
-        .with_timestamp_assigner(EventTime())
         .with_idleness(Duration.of_seconds(10))
+        .with_timestamp_assigner(EventTime())
     )
     (
         scored.assign_timestamps_and_watermarks(watermarks)

@@ -1,0 +1,14 @@
+{
+  "session": "about five minutes of live stream at three payments per second, the four fraud scenarios, one upload of sample_transactions.csv and one TaskManager restart",
+  "total": "976",
+  "normal": "963",
+  "suspicious": "8",
+  "fraud": "5",
+  "invalid": "9",
+  "fraud_rate": "0.51%",
+  "flink_latency": "7.9 s (median)",
+  "e2e_latency": "11.2 s (median)",
+  "checkpoints": "77",
+  "recovery": "Restored from checkpoint #55",
+  "duplicates": "0"
+}
