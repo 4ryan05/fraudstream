@@ -1,0 +1,21 @@
+txn_id,user_id,amount,merchant,city,timestamp
+demo-01,U9001,450,Swiggy,Mysuru,2026-11-03T08:00:00Z
+demo-02,U9004,1200,Amazon,Bengaluru,2026-11-03T08:00:10Z
+demo-03,U9001,520,BigBasket,Mysuru,2026-11-03T08:00:20Z
+demo-04,U9002,300,Indian Oil,Mysuru,2026-11-03T08:00:30Z
+demo-05,U9001,480,Zomato,Mysuru,2026-11-03T08:00:40Z
+demo-06,U9005,780,Croma,Mangaluru,2026-11-03T08:00:50Z
+demo-07,U9001,510,Apollo Pharmacy,Mysuru,2026-11-03T08:01:00Z
+demo-08,U9002,280,Reliance Fresh,Bengaluru,2026-11-03T08:01:20Z
+demo-09,U9003,150,Local Kirana,Hubballi,2026-11-03T08:01:30Z
+demo-10,U9003,220,Local Kirana,Hubballi,2026-11-03T08:01:35Z
+demo-11,U9003,180,Swiggy,Hubballi,2026-11-03T08:01:40Z
+demo-12,U9003,300,Zomato,Hubballi,2026-11-03T08:01:45Z
+demo-13,U9003,260,Myntra,Hubballi,2026-11-03T08:01:50Z
+demo-14,U9003,190,Flipkart,Hubballi,2026-11-03T08:02:00Z
+demo-15,U9003,240,BookMyShow,Hubballi,2026-11-03T08:02:10Z
+demo-16,U9001,7200,Croma,Mysuru,2026-11-03T08:02:20Z
+demo-17,U9006,640,IRCTC,Belagavi,2026-11-03T08:02:30Z
+demo-18,U9004,-350,Amazon,Bengaluru,2026-11-03T08:02:40Z
+demo-19,U9005,410,More Supermarket,,2026-11-03T08:02:50Z
+demo-20,U9006,150000,Croma,Belagavi,2026-11-03T08:03:00Z

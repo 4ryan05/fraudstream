@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FraudStream</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1c2230; --muted: #667085; --line: #e4e7ec;
+    --accent: #3b5bdb; --normal: #2f9e44; --suspicious: #e8890c; --fraud: #e03131; --invalid: #868e96;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
+  .app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+  aside { background: #141a2a; color: #d0d5dd; padding: 20px 16px; display: flex; flex-direction: column; gap: 6px; }
+  aside h1 { color: #fff; font-size: 19px; margin: 0 0 2px; }
+  aside .sub { font-size: 12px; color: #98a2b3; margin-bottom: 18px; }
+  aside button.tab { all: unset; cursor: pointer; padding: 9px 12px; border-radius: 8px; color: #d0d5dd; }
+  aside button.tab.active, aside button.tab:hover { background: #222b40; color: #fff; }
+  .status { margin-top: auto; font-size: 12px; display: grid; gap: 6px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--invalid); }
+  .dot.ok { background: #40c057; } .dot.warn { background: #fab005; } .dot.bad { background: #fa5252; }
+  main { padding: 22px 26px; min-width: 0; }
+  h2 { margin: 0 0 14px; font-size: 20px; }
+  h3 { margin: 0 0 10px; font-size: 14px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  .grid { display: grid; gap: 14px; margin-bottom: 14px; }
+  .cards { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .two { grid-template-columns: 1.6fr 1fr; }
+  .half { grid-template-columns: 1fr 1fr; }
+  .card .label { color: var(--muted); font-size: 12px; }
+  .card .value { font-size: 26px; font-weight: 700; margin-top: 2px; }
+  .card .hint { color: var(--muted); font-size: 12px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .controls .sep { width: 1px; height: 26px; background: var(--line); margin: 0 4px; }
+  button.btn { border: 1px solid var(--line); background: #fff; padding: 7px 12px; border-radius: 8px; cursor: pointer; font: inherit; }
+  button.btn:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.danger { color: var(--fraud); }
+  input[type=range] { width: 110px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; }
+  .NORMAL { background: var(--normal); } .SUSPICIOUS { background: var(--suspicious); } .FRAUD { background: var(--fraud); } .INVALID { background: var(--invalid); }
+  .reason { color: var(--muted); font-size: 12px; }
+  .scroll { max-height: 420px; overflow: auto; }
+  .toast { position: fixed; right: 20px; bottom: 20px; background: #141a2a; color: #fff; padding: 10px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; max-width: 380px; }
+  .toast.show { opacity: 1; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
+  .kv div:nth-child(odd) { color: var(--muted); }
+  .heat td { text-align: center; font-variant-numeric: tabular-nums; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+  .chart { position: relative; height: 260px; }
+  .hidden { display: none; }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    aside { flex-direction: row; flex-wrap: wrap; align-items: center; }
+    aside .sub, .status { display: none; }
+    .two, .half { grid-template-columns: 1fr; }
+    main { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>FraudStream</h1>
+    <div class="sub">Real-time UPI fraud detection<br>powered by Apache Flink</div>
+    <button class="tab active" data-tab="overview">Dashboard</button>
+    <button class="tab" data-tab="analytics">Users &amp; cities</button>
+    <button class="tab" data-tab="flink">Flink job</button>
+    <button class="tab" data-tab="rejected">Rejected records</button>
+    <div class="status">
+      <div><span class="dot" id="dot-api"></span>Backend API</div>
+      <div><span class="dot" id="dot-flink"></span><span id="flink-label">Apache Flink</span></div>
+      <div><span class="dot" id="dot-stream"></span><span id="stream-label">Simulator stopped</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- Dashboard -->
+    <section id="tab-overview">
+      <h2>Dashboard</h2>
+      <div class="panel grid" style="margin-bottom:14px">
+        <div class="controls">
+          <button class="btn primary" id="btn-stream">Start live stream</button>
+          <label>Rate <input type="range" id="rate" min="1" max="10" value="3"> <span id="rate-val">3</span> txn/s</label>
+          <span class="sep"></span>
+          <button class="btn" data-attack="velocity">Velocity burst</button>
+          <button class="btn" data-attack="amount">Big-ticket payment</button>
+          <button class="btn" data-attack="travel">Impossible travel</button>
+          <button class="btn" data-attack="invalid">Invalid records</button>
+          <span class="sep"></span>
+          <input type="file" id="csv" accept=".csv" class="hidden">
+          <button class="btn" id="btn-upload">Upload CSV</button>
+          <a href="/api/sample.csv" style="font-size:12px">sample CSV</a>
+          <span class="sep"></span>
+          <button class="btn danger" id="btn-reset">Reset data</button>
+        </div>
+      </div>
+      <div class="grid cards">
+        <div class="panel card"><div class="label">Transactions scored</div><div class="value" id="k-total">0</div><div class="hint" id="k-amount">Rs 0</div></div>
+        <div class="panel card"><div class="label">Normal</div><div class="value" style="color:var(--normal)" id="k-normal">0</div></div>
+        <div class="panel card"><div class="label">Suspicious</div><div class="value" style="color:var(--suspicious)" id="k-susp">0</div></div>
+        <div class="panel card"><div class="label">Fraud</div><div class="value" style="color:var(--fraud)" id="k-fraud">0</div><div class="hint" id="k-fraud-amt">Rs 0 blocked</div></div>
+        <div class="panel card"><div class="label">Fraud rate</div><div class="value" id="k-rate">0%</div><div class="hint" id="k-flagged">0% flagged</div></div>
+        <div class="panel card"><div class="label">Rejected</div><div class="value" style="color:var(--invalid)" id="k-invalid">0</div></div>
+        <div class="panel card"><div class="label">Flink latency</div><div class="value" id="k-lat">0 ms</div><div class="hint" id="k-e2e">end-to-end 0 s</div></div>
+      </div>
+      <div class="grid two">
+        <div class="panel"><h3>Transactions per minute (Flink event-time windows)</h3><div class="chart"><canvas id="ch-timeline"></canvas></div></div>
+        <div class="panel"><h3>Decision split</h3><div class="chart"><canvas id="ch-split"></canvas></div></div>
+      </div>
+      <div class="panel">
+        <h3>Latest alerts</h3>
+        <div class="scroll"><table><thead><tr><th>Time</th><th>Status</th><th>User</th><th class="num">Amount</th><th>City</th><th>Merchant</th><th>Why</th></tr></thead><tbody id="alerts"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- Users & cities -->
+    <section id="tab-analytics" class="hidden">
+      <h2>Users &amp; cities</h2>
+      <div class="grid half">
+        <div class="panel"><h3>Top flagged users</h3>
+          <div class="scroll"><table><thead><tr><th>User</th><th class="num">Txns</th><th class="num">Fraud</th><th class="num">Susp.</th><th class="num">Amount</th><th>Cities</th></tr></thead><tbody id="users"></tbody></table></div>
+        </div>
+        <div class="panel"><h3>Amount vs user average (latest transactions)</h3><div class="chart"><canvas id="ch-scatter"></canvas></div></div>
+      </div>
+      <div class="panel" style="margin-bottom:14px"><h3>City x minute window output (transactions / flagged)</h3>
+        <div class="scroll"><table class="heat" id="heat"></table></div>
+      </div>
+      <div class="panel"><h3>Recent transactions</h3>
+        <div class="scroll"><table><thead><tr><th>Time</th><th>Status</th><th>Txn</th><th>User</th><th class="num">Amount</th><th class="num">User avg</th><th class="num">Txns/60s</th><th>City</th><th class="num">Subtask</th></tr></thead><tbody id="recent"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- Flink job -->
+    <section id="tab-flink" class="hidden">
+      <h2>Flink job</h2>
+      <div class="grid half">
+        <div class="panel"><h3>Cluster and job</h3><div class="kv" id="flink-kv"></div></div>
+        <div class="panel"><h3>Checkpoints and exactly-once delivery</h3><div class="kv" id="ckpt-kv"></div></div>
+      </div>
+      <div class="grid half">
+        <div class="panel"><h3>Operators</h3>
+          <table><thead><tr><th>Operator</th><th class="num">Parallelism</th><th>Status</th><th class="num">Records in</th><th class="num">Records out</th></tr></thead><tbody id="vertices"></tbody></table>
+        </div>
+        <div class="panel"><h3>Fraud detector subtasks (keyed by user)</h3><div class="chart" style="height:200px"><canvas id="ch-subtasks"></canvas></div></div>
+      </div>
+      <div class="panel"><h3>Batches written by the simulator</h3>
+        <div class="scroll"><table><thead><tr><th>Batch</th><th>Source</th><th>Description</th><th class="num">Records</th><th>Progress</th><th>Status</th></tr></thead><tbody id="batches"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- Rejected -->
+    <section id="tab-rejected" class="hidden">
+      <h2>Rejected records</h2>
+      <div class="grid half">
+        <div class="panel"><h3>Rejection reasons (Validate side output)</h3><div class="chart" style="height:220px"><canvas id="ch-reasons"></canvas></div></div>
+        <div class="panel"><h3>Validation rules</h3>
+          <table><tbody>
+            <tr><td>All of txn_id, user_id, amount, merchant, city, timestamp present</td></tr>
+            <tr><td>Amount is numeric and greater than zero</td></tr>
+            <tr><td>Amount does not exceed the UPI limit of Rs 1,00,000</td></tr>
+            <tr><td>Timestamp is a valid ISO-8601 date-time</td></tr>
+            <tr><td>Line is valid JSON</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+      <div class="panel"><h3>Rejected records</h3>
+        <div class="scroll"><table><thead><tr><th>Stored</th><th>Reason</th><th>Batch</th><th>Raw record</th></tr></thead><tbody id="invalid"></tbody></table></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const COLORS = { NORMAL: '#2f9e44', SUSPICIOUS: '#e8890c', FRAUD: '#e03131', INVALID: '#868e96' };
+const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
+const rs = (n) => 'Rs ' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const time = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour12: false }) : '';
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pill = (s) => `<span class="pill ${s}">${s}</span>`;
+let currentTab = 'overview';
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.text()) || r.statusText);
+  return r.json();
+}
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// Tabs
+document.querySelectorAll('.tab').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === b));
+  currentTab = b.dataset.tab;
+  document.querySelectorAll('main > section').forEach((s) => s.classList.toggle('hidden', s.id !== 'tab-' + currentTab));
+  refresh();
+});
+
+// Controls
+$('rate').oninput = () => $('rate-val').textContent = $('rate').value;
+$('btn-stream').onclick = async () => {
+  const s = await api('/api/stream');
+  await api(s.running ? '/api/stream/stop' : '/api/stream/start?rate=' + $('rate').value, { method: 'POST' });
+  refresh();
+};
+$('rate').onchange = async () => {
+  const s = await api('/api/stream');
+  if (s.running) await api('/api/stream/start?rate=' + $('rate').value, { method: 'POST' });
+};
+document.querySelectorAll('[data-attack]').forEach((b) => b.onclick = async () => {
+  try { toast((await api('/api/attack/' + b.dataset.attack, { method: 'POST' })).label); } catch (e) { toast(e.message); }
+});
+$('btn-upload').onclick = () => $('csv').click();
+$('csv').onchange = async () => {
+  const f = $('csv').files[0]; if (!f) return;
+  try {
+    const r = await api('/api/upload?filename=' + encodeURIComponent(f.name), { method: 'POST', body: await f.text() });
+    toast(`Uploaded ${r.records} records from ${f.name}`);
+  } catch (e) { toast(e.message); }
+  $('csv').value = '';
+};
+$('btn-reset').onclick = async () => {
+  if (!confirm('Clear all stored results? Flink keeps its own state.')) return;
+  await api('/api/reset', { method: 'POST' }); toast('Data cleared'); refresh();
+};
+
+// Charts
+Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+Chart.defaults.color = '#667085';
+const charts = {};
+function chart(id, config) {
+  if (charts[id]) { charts[id].data = config.data; charts[id].update('none'); return; }
+  config.options = Object.assign({ responsive: true, maintainAspectRatio: false, animation: false }, config.options);
+  charts[id] = new Chart($(id), config);
+}
+
+async function refreshOverview(s) {
+  $('k-total').textContent = fmt(s.total);
+  $('k-amount').textContent = rs(s.amount) + ' processed';
+  $('k-normal').textContent = fmt(s.normal);
+  $('k-susp').textContent = fmt(s.suspicious);
+  $('k-fraud').textContent = fmt(s.fraud);
+  $('k-fraud-amt').textContent = rs(s.fraud_amount) + ' flagged';
+  $('k-rate').textContent = s.fraud_rate + '%';
+  $('k-flagged').textContent = s.flagged_rate + '% flagged incl. suspicious';
+  $('k-invalid').textContent = fmt(s.invalid);
+  $('k-lat').textContent = fmt(s.flink_latency_ms) + ' ms';
+  $('k-e2e').textContent = 'end-to-end ' + (s.e2e_latency_ms / 1000).toFixed(1) + ' s (incl. checkpoint)';
+
+  const [windows, alertsF, alertsS] = await Promise.all([
+    api('/api/windows?minutes=15'), api('/api/transactions?status=FRAUD&limit=25'), api('/api/transactions?status=SUSPICIOUS&limit=25'),
+  ]);
+  const byMin = {};
+  windows.forEach((w) => {
+    const m = byMin[w.window_start] ||= { normal: 0, suspicious: 0, fraud: 0 };
+    m.normal += w.normal; m.suspicious += w.suspicious; m.fraud += w.fraud;
+  });
+  const mins = Object.keys(byMin).sort();
+  const label = (ms) => new Date(+ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  chart('ch-timeline', {
+    type: 'bar',
+    data: { labels: mins.map(label), datasets: ['normal', 'suspicious', 'fraud'].map((k) => ({
+      label: k[0].toUpperCase() + k.slice(1), data: mins.map((m) => byMin[m][k]), backgroundColor: COLORS[k.toUpperCase()], stack: 's' })) },
+    options: { scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } },
+  });
+  chart('ch-split', {
+    type: 'doughnut',
+    data: { labels: ['Normal', 'Suspicious', 'Fraud', 'Rejected'],
+      datasets: [{ data: [s.normal, s.suspicious, s.fraud, s.invalid], backgroundColor: [COLORS.NORMAL, COLORS.SUSPICIOUS, COLORS.FRAUD, COLORS.INVALID] }] },
+    options: { plugins: { legend: { position: 'bottom' } }, cutout: '62%' },
+  });
+  const alerts = [...alertsF, ...alertsS].sort((a, b) => b.event_ms - a.event_ms).slice(0, 30);
+  $('alerts').innerHTML = alerts.map((t) => `<tr><td>${time(t.event_time)}</td><td>${pill(t.status)}</td><td>${esc(t.user_id)}</td>
+    <td class="num">${rs(t.amount)}</td><td>${esc(t.city)}</td><td>${esc(t.merchant)}</td><td class="reason">${t.reasons.map(esc).join('<br>')}</td></tr>`).join('')
+    || '<tr><td colspan="7" class="reason">No alerts yet. Start the live stream and try a fraud scenario.</td></tr>';
+}
+
+async function refreshAnalytics() {
+  const [users, windows, recent] = await Promise.all([api('/api/users'), api('/api/windows?minutes=10'), api('/api/transactions?limit=150')]);
+  $('users').innerHTML = users.map((u) => `<tr><td>${esc(u.user_id)}</td><td class="num">${u.txns}</td><td class="num">${u.fraud}</td>
+    <td class="num">${u.suspicious}</td><td class="num">${rs(u.amount)}</td><td class="reason">${esc(u.cities)}</td></tr>`).join('')
+    || '<tr><td colspan="6" class="reason">No flagged users yet.</td></tr>';
+
+  const mins = [...new Set(windows.map((w) => w.window_start))].sort();
+  const cities = [...new Set(windows.map((w) => w.city))].sort();
+  const cell = {}; windows.forEach((w) => cell[w.city + '|' + w.window_start] = w);
+  const max = Math.max(1, ...windows.map((w) => w.total));
+  const hm = (ms) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  $('heat').innerHTML = `<thead><tr><th>City</th>${mins.map((m) => `<th>${hm(m)}</th>`).join('')}</tr></thead><tbody>` +
+    cities.map((c) => `<tr><th>${esc(c)}</th>${mins.map((m) => {
+      const w = cell[c + '|' + m]; if (!w) return '<td></td>';
+      const flagged = w.fraud + w.suspicious;
+      const bg = flagged ? `rgba(224,49,49,${0.15 + 0.6 * Math.min(1, flagged / 3)})` : `rgba(59,91,219,${0.08 + 0.4 * w.total / max})`;
+      return `<td style="background:${bg}" title="${w.normal} normal, ${w.suspicious} suspicious, ${w.fraud} fraud">${w.total}${flagged ? ' / ' + flagged : ''}</td>`;
+    }).join('')}</tr>`).join('') + '</tbody>';
+  if (!windows.length) $('heat').innerHTML = '<tr><td class="reason">Windows appear once the event-time watermark passes the end of a minute.</td></tr>';
+
+  const pts = (st) => recent.filter((t) => t.status === st && t.avg_before).map((t) => ({ x: t.avg_before, y: t.amount }));
+  chart('ch-scatter', {
+    type: 'scatter',
+    data: { datasets: ['NORMAL', 'SUSPICIOUS', 'FRAUD'].map((st) => ({ label: st, data: pts(st), backgroundColor: COLORS[st] })) },
+    options: { scales: { x: { type: 'logarithmic', title: { display: true, text: 'user average before (Rs)' } },
+      y: { type: 'logarithmic', title: { display: true, text: 'amount (Rs)' } } }, plugins: { legend: { position: 'bottom' } } },
+  });
+  $('recent').innerHTML = recent.slice(0, 60).map((t) => `<tr><td>${time(t.event_time)}</td><td>${pill(t.status)}</td><td class="reason">${esc(t.txn_id)}</td>
+    <td>${esc(t.user_id)}</td><td class="num">${rs(t.amount)}</td><td class="num">${t.avg_before ? rs(t.avg_before) : '-'}</td>
+    <td class="num">${t.count_60s}</td><td>${esc(t.city)}</td><td class="num">${t.subtask}</td></tr>`).join('');
+}
+
+async function refreshFlink(s, f) {
+  const dt = (ms) => ms ? new Date(ms).toLocaleTimeString('en-IN', { hour12: false }) : '-';
+  const j = f.job;
+  const kv = (rows) => rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('');
+  $('flink-kv').innerHTML = f.reachable ? kv([
+    ['Flink version', f.version], ['TaskManagers', f.taskmanagers], ['Task slots', `${f.slots_total - f.slots_available} used / ${f.slots_total}`],
+    ['Job', j ? esc(j.name) : 'not submitted'], ['Job state', j ? `<b>${j.state}</b>` : '-'],
+    ['Running for', j ? Math.round(j.duration / 1000) + ' s' : '-'], ['Restarts', j ? j.restarts : '-'],
+  ]) : kv([['Flink', 'not reachable at ' + esc(f.url)]]);
+  const c = j ? j.checkpoints : {};
+  $('ckpt-kv').innerHTML = kv([
+    ['Completed checkpoints', j ? c.completed : '-'], ['Failed checkpoints', j ? c.failed : '-'],
+    ['Latest checkpoint', j && c.latest_id ? `#${c.latest_id} at ${dt(c.latest_time)} (${c.latest_duration} ms)` : '-'],
+    ['Restored from', j && c.restored_id ? `checkpoint #${c.restored_id} at ${dt(c.restored_time)}` : 'never restored'],
+    ['Rows delivered by Flink', fmt(s.delivered)], ['Duplicate rows', `<b>${fmt(s.duplicates)}</b>`],
+    ['Records written / not yet out', `${fmt(s.records_written)} / ${fmt(s.records_pending)}`],
+  ]);
+  $('vertices').innerHTML = j ? j.vertices.map((v) => `<tr><td>${esc(v.name)}</td><td class="num">${v.parallelism}</td><td>${v.status}</td>
+    <td class="num">${fmt(v.read)}</td><td class="num">${fmt(v.write)}</td></tr>`).join('') : '';
+
+  const [subs, batches] = await Promise.all([api('/api/subtasks'), api('/api/batches?limit=25')]);
+  chart('ch-subtasks', {
+    type: 'bar',
+    data: { labels: subs.map((x) => 'Subtask ' + x.subtask), datasets: [
+      { label: 'Transactions', data: subs.map((x) => x.txns), backgroundColor: '#3b5bdb' },
+      { label: 'Distinct users', data: subs.map((x) => x.users), backgroundColor: '#91a7ff' }] },
+    options: { indexAxis: 'y', plugins: { legend: { position: 'bottom' } } },
+  });
+  $('batches').innerHTML = batches.map((b) => {
+    const pct = Math.min(100, Math.round(100 * b.processed / b.records));
+    return `<tr><td class="reason">${esc(b.batch_id)}</td><td>${esc(b.source)}</td><td>${esc(b.label)}</td><td class="num">${b.records}</td>
+      <td style="min-width:90px"><div class="bar"><span style="width:${pct}%"></span></div></td><td>${pct >= 100 ? 'COMPLETED' : 'IN FLINK'}</td></tr>`;
+  }).join('');
+}
+
+async function refreshRejected() {
+  const r = await api('/api/invalid');
+  chart('ch-reasons', {
+    type: 'bar',
+    data: { labels: r.reasons.map((x) => x.reason), datasets: [{ label: 'Records', data: r.reasons.map((x) => x.n), backgroundColor: COLORS.INVALID }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+  $('invalid').innerHTML = r.records.map((x) => `<tr><td>${new Date(x.stored_ms).toLocaleTimeString('en-IN', { hour12: false })}</td>
+    <td>${esc(x.reason)}</td><td class="reason">${esc(x.batch_id || '-')}</td><td class="reason"><code>${esc(x.raw)}</code></td></tr>`).join('')
+    || '<tr><td colspan="4" class="reason">No rejected records.</td></tr>';
+}
+
+// The Flink REST check runs on its own loop so a slow or stopped cluster never delays the dashboard.
+let flinkInfo = { reachable: false, url: 'checking...' }, flinkBusy = false;
+async function refreshFlinkStatus() {
+  if (flinkBusy) return;
+  flinkBusy = true;
+  try { flinkInfo = await api('/api/flink'); } catch { flinkInfo = { reachable: false, url: '' }; }
+  flinkBusy = false;
+  const f = flinkInfo, state = f.job ? f.job.state : (f.reachable ? 'no job' : 'unreachable');
+  $('dot-flink').className = 'dot ' + (state === 'RUNNING' ? 'ok' : f.reachable ? 'warn' : 'bad');
+  $('flink-label').textContent = 'Apache Flink: ' + state;
+}
+
+let busy = false;
+async function refresh() {
+  if (busy) return;
+  busy = true;
+  try { await refreshNow(); } finally { busy = false; }
+}
+async function refreshNow() {
+  let s;
+  const f = flinkInfo;
+  try { s = await api('/api/summary'); $('dot-api').className = 'dot ok'; } catch { $('dot-api').className = 'dot bad'; return; }
+  $('dot-stream').className = 'dot ' + (s.stream.running ? 'ok' : '');
+  $('stream-label').textContent = s.stream.running ? `Simulator on (${s.stream.rate} txn/s)` : 'Simulator stopped';
+  $('btn-stream').textContent = s.stream.running ? 'Stop live stream' : 'Start live stream';
+  try {
+    if (currentTab === 'overview') await refreshOverview(s);
+    if (currentTab === 'analytics') await refreshAnalytics();
+    if (currentTab === 'flink') await refreshFlink(s, f);
+    if (currentTab === 'rejected') await refreshRejected();
+  } catch (e) { console.error(e); }
+}
+refreshFlinkStatus().then(refresh);
+refresh();
+setInterval(refresh, 2000);
+setInterval(refreshFlinkStatus, 3000);
+</script>
+</body>
+</html>

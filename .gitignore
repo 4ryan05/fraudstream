@@ -1,0 +1,11 @@
+# Runtime data written by the simulator, Flink and the backend
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local SQLite if the backend is run outside Docker
+*.db

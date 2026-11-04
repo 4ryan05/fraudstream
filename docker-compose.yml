@@ -1,0 +1,53 @@
+x-flink-env: &flink-env
+  FLINK_PROPERTIES: |
+    jobmanager.rpc.address: jobmanager
+    taskmanager.numberOfTaskSlots: 4
+    parallelism.default: 2
+    python.executable: python3
+    python.client.executable: python3
+    restart-strategy.type: fixed-delay
+    restart-strategy.fixed-delay.attempts: 1000
+    restart-strategy.fixed-delay.delay: 5 s
+
+services:
+  jobmanager:
+    build: ./flink
+    image: fraudstream-flink:1.20.1
+    command: jobmanager
+    ports:
+      - "8081:8081"   # Flink Web UI
+    environment: *flink-env
+    volumes:
+      - ./data:/opt/flink/data
+
+  taskmanager:
+    image: fraudstream-flink:1.20.1
+    command: taskmanager
+    depends_on: [jobmanager]
+    environment: *flink-env
+    volumes:
+      - ./data:/opt/flink/data
+
+  job-submit:
+    image: fraudstream-flink:1.20.1
+    command: bash /opt/flink/usrlib/submit.sh
+    depends_on: [jobmanager, taskmanager, backend]
+    environment: *flink-env
+    volumes:
+      - ./data:/opt/flink/data
+    restart: "no"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"   # dashboard and API
+    environment:
+      DATA_DIR: /data
+      DB_PATH: /db/fraudstream.db
+      FLINK_URL: http://jobmanager:8081
+    volumes:
+      - ./data:/data
+      - dbdata:/db
+
+volumes:
+  dbdata:
